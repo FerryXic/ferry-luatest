@@ -4,1635 +4,475 @@ local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Player = Players.LocalPlayer
-
-local WeaponAttack = ReplicatedStorage
-	:WaitForChild("Weapon_Engine")
-	:WaitForChild("Remotes")
-	:WaitForChild("WeaponAttack")
+local WeaponAttack = ReplicatedStorage:WaitForChild("Weapon_Engine"):WaitForChild("Remotes"):WaitForChild("WeaponAttack")
 
 --==================================================
--- SETTINGS
+-- SETTINGS & VARIABLES
 --==================================================
 
 local SPEED = 100
-local ATTACK_DISTANCE = 6
-local ATTACK_DELAY = 0.25
-
-local KILL_AURA_RADIUS = 10
-local KILL_AURA_DELAY = 0.25
+local ATTACK_DISTANCE = 10 
+local ATTACK_DELAY = 0.25 
+local AURA_RADIUS = 15 
+local AURA_COOLDOWN = 0.25 
 
 local farming = false
-local killAura = false
-
+local auraAttacking = false
 local farmAggressors = true
 local farmPassives = false
 
-local activeTween = nil
-
 --==================================================
--- COLORS
---==================================================
-
-local NAVY = Color3.fromRGB(4, 42, 84)
-local NAVY_DARK = Color3.fromRGB(3, 32, 65)
-
-local BLACK = Color3.fromRGB(2, 2, 2)
-local WHITE = Color3.fromRGB(245, 245, 245)
-
-local GREEN = Color3.fromRGB(0, 205, 105)
-local GREEN_DARK = Color3.fromRGB(0, 165, 85)
-
-local RED = Color3.fromRGB(255, 55, 55)
-local GRAY = Color3.fromRGB(125, 125, 125)
-
-local TITLE_RED = Color3.fromRGB(255, 85, 85)
-
---==================================================
--- ATTACK
+-- GAME LOGIC
 --==================================================
 
 local function AttackCreature()
-	pcall(function()
-		WeaponAttack:FireServer(1)
-	end)
+    pcall(function() WeaponAttack:FireServer(1) end)
 end
 
---==================================================
--- CREATURE UTILITIES
---==================================================
-
 local function GetRootPart(obj)
-
-	if not obj then
-		return nil
-	end
-
-	if obj:IsA("BasePart") then
-		return obj
-	end
-
-	if obj:IsA("Model") then
-
-		if obj.PrimaryPart then
-			return obj.PrimaryPart
-		end
-
-		return obj:FindFirstChild("HumanoidRootPart")
-			or obj:FindFirstChild("Root")
-			or obj:FindFirstChildWhichIsA("BasePart")
-	end
-
-	return nil
+    if obj:IsA("BasePart") then return obj end
+    if obj:IsA("Model") then
+        return obj.PrimaryPart or obj:FindFirstChild("HumanoidRootPart") or obj:FindFirstChild("Root") or obj:FindFirstChildWhichIsA("BasePart")
+    end
+    return nil
 end
 
 local function GetCreatures()
+    local result = {}
+    local AnimalLive = workspace:FindFirstChild("Animal_Live")
+    if not AnimalLive then return result end
 
-	local result = {}
+    if farmAggressors then
+        local folder = AnimalLive:FindFirstChild("Aggressors")
+        if folder then
+            for _, creature in ipairs(folder:GetChildren()) do
+                if creature.Parent and GetRootPart(creature) then table.insert(result, creature) end
+            end
+        end
+    end
 
-	local AnimalLive = workspace:FindFirstChild("Animal_Live")
+    if farmPassives then
+        local folder = AnimalLive:FindFirstChild("Passives")
+        if folder then
+            for _, creature in ipairs(folder:GetChildren()) do
+                if creature.Parent and GetRootPart(creature) then table.insert(result, creature) end
+            end
+        end
+    end
+    return result
+end
 
-	if not AnimalLive then
-		return result
-	end
+local function GetNearestCreature()
+    local Character = Player.Character
+    local HRP = Character and Character:FindFirstChild("HumanoidRootPart")
+    if not HRP then return nil end
 
-	-- AGGRESSORS
-	if farmAggressors then
-
-		local folder = AnimalLive:FindFirstChild("Aggressors")
-
-		if folder then
-
-			for _, creature in ipairs(folder:GetChildren()) do
-
-				if creature.Parent and GetRootPart(creature) then
-					table.insert(result, creature)
-				end
-
-			end
-		end
-	end
-
-	-- PASSIVES
-	if farmPassives then
-
-		local folder = AnimalLive:FindFirstChild("Passives")
-
-		if folder then
-
-			for _, creature in ipairs(folder:GetChildren()) do
-
-				if creature.Parent and GetRootPart(creature) then
-					table.insert(result, creature)
-				end
-
-			end
-		end
-	end
-
-	return result
+    local nearest, nearestDistance = nil, math.huge
+    for _, creature in ipairs(GetCreatures()) do
+        local root = GetRootPart(creature)
+        if root then
+            local distance = (HRP.Position - root.Position).Magnitude
+            if distance < nearestDistance then
+                nearestDistance = distance
+                nearest = creature
+            end
+        end
+    end
+    return nearest
 end
 
 local function IsCreatureAlive(creature)
-
-	if not creature then
-		return false
-	end
-
-	if not creature.Parent then
-		return false
-	end
-
-	local humanoid = creature:FindFirstChildOfClass("Humanoid")
-
-	if humanoid then
-		return humanoid.Health > 0
-	end
-
-	return true
-end
-
-local function GetNearestCreature(maxDistance)
-
-	local Character = Player.Character
-
-	if not Character then
-		return nil
-	end
-
-	local HRP = Character:FindFirstChild("HumanoidRootPart")
-
-	if not HRP then
-		return nil
-	end
-
-	local nearest = nil
-	local nearestDistance = maxDistance or math.huge
-
-	for _, creature in ipairs(GetCreatures()) do
-
-		if creature.Parent then
-
-			local root = GetRootPart(creature)
-
-			if root then
-
-				local distance =
-					(HRP.Position - root.Position).Magnitude
-
-				if distance < nearestDistance then
-
-					nearestDistance = distance
-					nearest = creature
-
-				end
-			end
-		end
-	end
-
-	return nearest
+    if not creature or not creature.Parent then return false end
+    local humanoid = creature:FindFirstChildOfClass("Humanoid")
+    return humanoid and humanoid.Health > 0 or true
 end
 
 --==================================================
--- TWEEN
+-- AURA ATTACK LOOP
 --==================================================
+local function StartAura()
+    if auraAttacking then return end
+    auraAttacking = true
+    task.spawn(function()
+        while auraAttacking do
+            local Character = Player.Character
+            local HRP = Character and Character:FindFirstChild("HumanoidRootPart")
+            local attacked = false
+            
+            if Character and HRP then
+                for _, creature in ipairs(GetCreatures()) do
+                    if IsCreatureAlive(creature) then
+                        local root = GetRootPart(creature)
+                        if root and (HRP.Position - root.Position).Magnitude <= AURA_RADIUS then
+                            if not attacked then
+                                pcall(function() HRP.CFrame = CFrame.lookAt(HRP.Position, Vector3.new(root.Position.X, HRP.Position.Y, root.Position.Z)) end)
+                            end
+                            AttackCreature()
+                            attacked = true
+                        end
+                    end
+                end
+            end
+            task.wait(attacked and AURA_COOLDOWN or 0.03)
+        end
+    end)
+end
 
+local function StopAura() auraAttacking = false end
+
+--==================================================
+-- AUTO FARM LOOP
+--==================================================
+local activeTween = nil
 local function CancelActiveTween()
-
-	if activeTween then
-
-		pcall(function()
-			activeTween:Cancel()
-		end)
-
-		activeTween = nil
-	end
+    if activeTween then activeTween:Cancel(); activeTween = nil end
 end
-
---==================================================
--- AUTO FARM
---==================================================
 
 local function StartFarm()
+    if farming then return end
+    farming = true
+    task.spawn(function()
+        while farming do
+            local Character = Player.Character
+            local HRP = Character and Character:FindFirstChild("HumanoidRootPart")
+            if not Character or not HRP then task.wait(1); continue end
 
-	if farming then
-		return
-	end
-
-	farming = true
-
-	task.spawn(function()
-
-		while farming do
-
-			local Character = Player.Character
-			local HRP =
-				Character
-				and Character:FindFirstChild("HumanoidRootPart")
-
-			if not Character or not HRP then
-
-				task.wait(0.5)
-				continue
-			end
-
-			local creature = GetNearestCreature()
-
-			if not creature then
-
-				task.wait(0.25)
-				continue
-			end
-
-			while farming
-				and creature.Parent
-				and IsCreatureAlive(creature) do
-
-				Character = Player.Character
-
-				HRP =
-					Character
-					and Character:FindFirstChild("HumanoidRootPart")
-
-				local root = GetRootPart(creature)
-
-				if not HRP or not root then
-					break
-				end
-
-				local distance =
-					(HRP.Position - root.Position).Magnitude
-
-				-- MOVE
-				if distance > ATTACK_DISTANCE then
-
-					local direction =
-						HRP.Position - root.Position
-
-					if direction.Magnitude < 0.1 then
-						direction = Vector3.new(0, 0, 1)
-					else
-						direction = direction.Unit
-					end
-
-					local targetPosition =
-						root.Position
-						+ direction * (ATTACK_DISTANCE * 0.5)
-
-					local moveDistance =
-						(HRP.Position - targetPosition).Magnitude
-
-					local duration =
-						math.max(moveDistance / SPEED, 0.05)
-
-					CancelActiveTween()
-
-					activeTween = TweenService:Create(
-						HRP,
-						TweenInfo.new(
-							duration,
-							Enum.EasingStyle.Linear
-						),
-						{
-							CFrame = CFrame.new(
-								targetPosition,
-								root.Position
-							)
-						}
-					)
-
-					activeTween:Play()
-
-					task.wait(0.1)
-
-				-- ATTACK
-				else
-
-					CancelActiveTween()
-
-					pcall(function()
-
-						HRP.CFrame = CFrame.lookAt(
-							HRP.Position,
-							Vector3.new(
-								root.Position.X,
-								HRP.Position.Y,
-								root.Position.Z
-							)
-						)
-
-					end)
-
-					AttackCreature()
-
-					task.wait(ATTACK_DELAY)
-				end
-			end
-
-			CancelActiveTween()
-
-			task.wait(0.2)
-		end
-
-		CancelActiveTween()
-	end)
+            local creature = GetNearestCreature()
+            if creature then
+                while farming and creature.Parent and IsCreatureAlive(creature) do
+                    Character = Player.Character
+                    HRP = Character and Character:FindFirstChild("HumanoidRootPart")
+                    local root = GetRootPart(creature)
+                    if not HRP or not root then break end
+                    
+                    local direction = HRP.Position - root.Position
+                    direction = direction.Magnitude < 0.1 and Vector3.new(0,0,1) or direction.Unit
+                    
+                    if (HRP.Position - root.Position).Magnitude > ATTACK_DISTANCE then
+                        local targetPos = root.Position + direction * ATTACK_DISTANCE
+                        local duration = math.max((HRP.Position - targetPos).Magnitude / SPEED, 0.05)
+                        
+                        CancelActiveTween()
+                        activeTween = TweenService:Create(HRP, TweenInfo.new(duration, Enum.EasingStyle.Linear), {CFrame = CFrame.new(targetPos, root.Position)})
+                        activeTween:Play()
+                        task.wait(0.1)
+                    else
+                        CancelActiveTween()
+                        if not auraAttacking then
+                            pcall(function() HRP.CFrame = CFrame.lookAt(HRP.Position, Vector3.new(root.Position.X, HRP.Position.Y, root.Position.Z)) end)
+                            AttackCreature()
+                            task.wait(ATTACK_DELAY)
+                        else
+                            task.wait(0.1)
+                        end
+                    end
+                end
+                CancelActiveTween()
+                task.wait(0.5) 
+            else
+                task.wait(0.3)
+            end
+        end
+        CancelActiveTween()
+    end)
 end
 
-local function StopFarm()
-
-	farming = false
-
-	CancelActiveTween()
-end
+local function StopFarm() farming = false end
 
 --==================================================
--- KILL AURA
---==================================================
-
-local function StartKillAura()
-
-	if killAura then
-		return
-	end
-
-	killAura = true
-
-	task.spawn(function()
-
-		while killAura do
-
-			local Character = Player.Character
-			local HRP =
-				Character
-				and Character:FindFirstChild("HumanoidRootPart")
-
-			if not HRP then
-
-				task.wait(0.5)
-				continue
-			end
-
-			local creature =
-				GetNearestCreature(KILL_AURA_RADIUS)
-
-			if creature then
-
-				local root = GetRootPart(creature)
-
-				if root then
-
-					-- Hadap ke target
-					pcall(function()
-
-						HRP.CFrame = CFrame.lookAt(
-							HRP.Position,
-							Vector3.new(
-								root.Position.X,
-								HRP.Position.Y,
-								root.Position.Z
-							)
-						)
-
-					end)
-
-					AttackCreature()
-				end
-			end
-
-			task.wait(KILL_AURA_DELAY)
-		end
-	end)
-end
-
-local function StopKillAura()
-
-	killAura = false
-end
-
---==================================================
--- GUI
+-- GUI BUILDER (SESUAI KONSEP)
 --==================================================
 
 local ScreenGui = Instance.new("ScreenGui")
-
-ScreenGui.Name = "VayScriptPolyLoot"
+ScreenGui.Name = "VayScriptUI"
 ScreenGui.ResetOnSpawn = false
-ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = Player:WaitForChild("PlayerGui")
 
-ScreenGui.Parent =
-	Player:WaitForChild("PlayerGui")
-
---==================================================
--- MAIN
---==================================================
-
-local MAIN_WIDTH = 280
-local MAIN_HEIGHT = 365
-
+-- MAIN FRAME
 local Main = Instance.new("Frame")
-
-Main.Name = "Main"
-
-Main.Size =
-	UDim2.fromOffset(
-		MAIN_WIDTH,
-		MAIN_HEIGHT
-	)
-
-Main.Position =
-	UDim2.new(
-		0.5,
-		-MAIN_WIDTH / 2,
-		0.5,
-		-MAIN_HEIGHT / 2
-	)
-
-Main.BackgroundColor3 = NAVY
-Main.BorderSizePixel = 0
-
-Main.ClipsDescendants = true
-
+Main.Size = UDim2.new(0, 260, 0, 310)
+Main.Position = UDim2.new(0.5, -130, 0.5, -155)
+Main.BackgroundColor3 = Color3.fromRGB(4, 25, 55) -- Biru gelap konsep
 Main.Parent = ScreenGui
-
 local MainCorner = Instance.new("UICorner")
-
-MainCorner.CornerRadius =
-	UDim.new(0, 22)
-
+MainCorner.CornerRadius = UDim.new(0, 12)
 MainCorner.Parent = Main
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Color = Color3.fromRGB(255, 255, 255)
+MainStroke.Thickness = 2
+MainStroke.Parent = Main
+
+-- MINIMIZED FRAME (KOTAK "V")
+local MinFrame = Instance.new("TextButton")
+MinFrame.Size = UDim2.new(0, 45, 0, 45)
+MinFrame.Position = UDim2.new(0.5, -22, 0.1, 0)
+MinFrame.BackgroundColor3 = Color3.fromRGB(4, 25, 55)
+MinFrame.Text = "V"
+MinFrame.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinFrame.Font = Enum.Font.GothamBlack
+MinFrame.TextSize = 28
+MinFrame.Visible = false
+MinFrame.Parent = ScreenGui
+local MinCorner = Instance.new("UICorner")
+MinCorner.CornerRadius = UDim.new(0, 10)
+MinCorner.Parent = MinFrame
+local MinStroke = Instance.new("UIStroke")
+MinStroke.Color = Color3.fromRGB(255, 255, 255)
+MinStroke.Thickness = 2
+MinStroke.Parent = MinFrame
+local MinOutline = Instance.new("UIStroke")
+MinOutline.Color = Color3.fromRGB(0, 0, 0)
+MinOutline.Thickness = 1
+MinOutline.Parent = MinFrame
 
---==================================================
--- ROUNDED DASHED BORDER
---==================================================
-
-local BorderLayer = Instance.new("Frame")
-
-BorderLayer.Name = "DashedBorder"
-
-BorderLayer.Size =
-	UDim2.fromScale(1, 1)
-
-BorderLayer.BackgroundTransparency = 1
-BorderLayer.BorderSizePixel = 0
-
-BorderLayer.ZIndex = 100
-
-BorderLayer.Parent = Main
-
--- membuat dash kecil dengan sudut rounded
-local function MakeDash(
-	x,
-	y,
-	width,
-	height,
-	rotation
-)
-
-	local dash = Instance.new("Frame")
-
-	dash.Size =
-		UDim2.fromOffset(
-			width,
-			height
-		)
-
-	dash.Position =
-		UDim2.fromOffset(
-			x,
-			y
-		)
-
-	dash.AnchorPoint =
-		Vector2.new(0.5, 0.5)
-
-	dash.Rotation = rotation
-
-	dash.BackgroundColor3 = WHITE
-	dash.BorderSizePixel = 0
-
-	dash.ZIndex = 101
-
-	dash.Parent = BorderLayer
-
-	local corner = Instance.new("UICorner")
-
-	corner.CornerRadius =
-		UDim.new(1, 0)
-
-	corner.Parent = dash
-
-	return dash
-end
-
--- dashed rounded rectangle
-local function CreateRoundedDashedBorder(
-	width,
-	height,
-	radius,
-	dashLength,
-	gap
-)
-
-	local perimeter =
-		2 * (width - 2 * radius)
-		+ 2 * (height - 2 * radius)
-		+ 2 * math.pi * radius
-
-	local distance = 0
-
-	while distance < perimeter do
-
-		local t =
-			distance % perimeter
-
-		local x
-		local y
-		local angle
-
-		local topLength = width - 2 * radius
-		local sideLength = height - 2 * radius
-		local cornerLength = math.pi * radius / 2
-
-		if t < topLength then
-
-			x = radius + t
-			y = 2
-			angle = 0
-
-		elseif t < topLength + cornerLength then
-
-			local a =
-				(t - topLength)
-				/ radius
-
-			x =
-				width
-				- radius
-				+ math.sin(a) * radius
-
-			y =
-				radius
-				- math.cos(a) * radius
-
-			angle =
-				math.deg(a)
-
-		elseif t < topLength + cornerLength + sideLength then
-
-			local d =
-				t
-				- topLength
-				- cornerLength
-
-			x = width - 2
-			y = radius + d
-			angle = 90
-
-		elseif t < topLength + cornerLength * 2 + sideLength then
-
-			local a =
-				(t
-					- topLength
-					- cornerLength
-					- sideLength)
-				/ radius
-
-			x =
-				width
-				- radius
-				+ math.cos(a)
-				* radius
-
-			y =
-				height
-				- radius
-				+ math.sin(a)
-				* radius
-
-			angle =
-				math.deg(a) + 90
-
-		elseif t < topLength
-			+ cornerLength * 2
-			+ sideLength
-			+ topLength then
-
-			local d =
-				t
-				- topLength
-				- cornerLength * 2
-				- sideLength
-
-			x =
-				width
-				- radius
-				- d
-
-			y = height - 2
-			angle = 0
-
-		elseif t < topLength
-			+ cornerLength * 3
-			+ sideLength
-			+ topLength then
-
-			local a =
-				(t
-					- topLength
-					- cornerLength * 2
-					- sideLength
-					- topLength)
-				/ radius
-
-			x =
-				radius
-				- math.sin(a) * radius
-
-			y =
-				height
-				- radius
-				+ math.cos(a) * radius
-
-			angle =
-				math.deg(a)
-
-		elseif t < topLength * 2
-			+ cornerLength * 3
-			+ sideLength then
-
-			local d =
-				t
-				- topLength
-				- cornerLength * 3
-				- sideLength
-				- topLength
-
-			x = 2
-			y =
-				height
-				- radius
-				- d
-
-			angle = 90
-
-		else
-
-			local a =
-				(t
-					- topLength * 2
-					- cornerLength * 3
-					- sideLength)
-				/ radius
-
-			x =
-				radius
-				- math.cos(a) * radius
-
-			y =
-				radius
-				- math.sin(a) * radius
-
-			angle =
-				math.deg(a) + 90
-		end
-
-		MakeDash(
-			x,
-			y,
-			dashLength,
-			3,
-			angle
-		)
-
-		distance +=
-			dashLength + gap
-	end
-end
-
-CreateRoundedDashedBorder(
-	MAIN_WIDTH,
-	MAIN_HEIGHT,
-	22,
-	14,
-	7
-)
-
---==================================================
 -- HEADER
---==================================================
-
 local Header = Instance.new("Frame")
-
-Header.Size =
-	UDim2.new(
-		1,
-		0,
-		0,
-		55
-	)
-
+Header.Size = UDim2.new(1, 0, 0, 35)
 Header.BackgroundTransparency = 1
-Header.BorderSizePixel = 0
-
-Header.ZIndex = 10
 Header.Parent = Main
 
 local Title = Instance.new("TextLabel")
-
-Title.Size =
-	UDim2.new(
-		1,
-		-105,
-		1,
-		0
-	)
-
-Title.Position =
-	UDim2.fromOffset(20, 0)
-
+Title.Size = UDim2.new(1, -70, 1, 0)
+Title.Position = UDim2.new(0, 12, 0, 0)
 Title.BackgroundTransparency = 1
-
-Title.Text =
-	"VayScript - Poly Loot"
-
-Title.TextColor3 =
-	TITLE_RED
-
-Title.TextSize = 17
+Title.Text = "VayScript - Poly Loot"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.GothamBold
-
-Title.TextXAlignment =
-	Enum.TextXAlignment.Left
-
-Title.ZIndex = 11
+Title.TextSize = 14
+Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = Header
+local TitleStroke = Instance.new("UIStroke")
+TitleStroke.Color = Color3.fromRGB(0, 0, 0)
+TitleStroke.Thickness = 1.5
+TitleStroke.Parent = Title
 
---==================================================
--- MINIMIZE
---==================================================
+local MinimizeBtn = Instance.new("TextButton")
+MinimizeBtn.Size = UDim2.new(0, 20, 0, 20)
+MinimizeBtn.Position = UDim2.new(1, -52, 0.5, -10)
+MinimizeBtn.BackgroundColor3 = Color3.fromRGB(30, 180, 70)
+MinimizeBtn.Text = "-"
+MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinimizeBtn.Font = Enum.Font.GothamBold
+MinimizeBtn.TextSize = 18
+MinimizeBtn.Parent = Header
+local MinBtnCorner = Instance.new("UICorner")
+MinBtnCorner.CornerRadius = UDim.new(1, 0)
+MinBtnCorner.Parent = MinimizeBtn
 
-local Minimize = Instance.new("TextButton")
-
-Minimize.Size =
-	UDim2.fromOffset(36, 36)
-
-Minimize.Position =
-	UDim2.new(
-		1,
-		-83,
-		0.5,
-		-18
-	)
-
-Minimize.BackgroundColor3 =
-	GREEN
-
-Minimize.BorderSizePixel = 0
-
-Minimize.Text = "−"
-
-Minimize.TextColor3 =
-	WHITE
-
-Minimize.TextSize = 23
-Minimize.Font =
-	Enum.Font.GothamBold
-
-Minimize.AutoButtonColor = false
-
-Minimize.ZIndex = 20
-Minimize.Parent = Header
-
-local MinCorner = Instance.new("UICorner")
-
-MinCorner.CornerRadius =
-	UDim.new(1, 0)
-
-MinCorner.Parent = Minimize
-
---==================================================
--- CLOSE
---==================================================
-
-local Close = Instance.new("TextButton")
-
-Close.Size =
-	UDim2.fromOffset(36, 36)
-
-Close.Position =
-	UDim2.new(
-		1,
-		-40,
-		0.5,
-		-18
-	)
-
-Close.BackgroundColor3 =
-	RED
-
-Close.BorderSizePixel = 0
-
-Close.Text = "×"
-
-Close.TextColor3 =
-	WHITE
-
-Close.TextSize = 23
-Close.Font =
-	Enum.Font.GothamBold
-
-Close.AutoButtonColor = false
-
-Close.ZIndex = 20
-Close.Parent = Header
-
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 20, 0, 20)
+CloseBtn.Position = UDim2.new(1, -26, 0.5, -10)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+CloseBtn.Text = "x"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.TextSize = 14
+CloseBtn.Parent = Header
 local CloseCorner = Instance.new("UICorner")
+CloseCorner.CornerRadius = UDim.new(1, 0)
+CloseCorner.Parent = CloseBtn
 
-CloseCorner.CornerRadius =
-	UDim.new(1, 0)
-
-CloseCorner.Parent = Close
-
---==================================================
--- HEADER LINE
---==================================================
-
-local HeaderLine = Instance.new("Frame")
-
-HeaderLine.Size =
-	UDim2.new(
-		1,
-		-28,
-		0,
-		3
-	)
-
-HeaderLine.Position =
-	UDim2.new(
-		0,
-		14,
-		1,
-		-2
-	)
-
-HeaderLine.BackgroundColor3 =
-	WHITE
-
-HeaderLine.BorderSizePixel = 0
-
-HeaderLine.ZIndex = 10
-HeaderLine.Parent = Header
-
---==================================================
--- CONTENT
---==================================================
-
+-- CONTENT AREA
 local Content = Instance.new("Frame")
-
-Content.Size =
-	UDim2.new(
-		1,
-		-28,
-		1,
-		-68
-	)
-
-Content.Position =
-	UDim2.fromOffset(14, 65)
-
+Content.Size = UDim2.new(1, -24, 1, -85)
+Content.Position = UDim2.new(0, 12, 0, 35)
 Content.BackgroundTransparency = 1
-
-Content.ZIndex = 5
 Content.Parent = Main
 
---==================================================
--- BUTTON CREATOR
---==================================================
+local UIListLayout = Instance.new("UIListLayout")
+UIListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+UIListLayout.Padding = UDim.new(0, 8)
+UIListLayout.Parent = Content
 
-local function CreateFeatureButton(
-	name,
-	y,
-	height
-)
-
-	local Button = Instance.new("TextButton")
-
-	Button.Name = name
-
-	Button.Size =
-		UDim2.new(
-			1,
-			0,
-			0,
-			height
-		)
-
-	Button.Position =
-		UDim2.fromOffset(
-			0,
-			y
-		)
-
-	Button.BackgroundColor3 =
-		BLACK
-
-	Button.BorderSizePixel = 0
-
-	Button.Text = ""
-
-	Button.AutoButtonColor = false
-
-	Button.ZIndex = 10
-	Button.Parent = Content
-
-	local corner = Instance.new("UICorner")
-
-	corner.CornerRadius =
-		UDim.new(0, 15)
-
-	corner.Parent = Button
-
-	-- inner dashed border
-	local border = Instance.new("Frame")
-
-	border.Size =
-		UDim2.new(
-			1,
-			-4,
-			1,
-			-4
-		)
-
-	border.Position =
-		UDim2.fromOffset(2, 2)
-
-	border.BackgroundTransparency = 1
-	border.BorderSizePixel = 0
-
-	border.ZIndex = 15
-	border.Parent = Button
-
-	local borderCorner = Instance.new("UICorner")
-
-	borderCorner.CornerRadius =
-		UDim.new(0, 13)
-
-	borderCorner.Parent = border
-
-	-- dash horizontal/vertical
-	local function Dash(
-		size,
-		position
-	)
-
-		local d = Instance.new("Frame")
-
-		d.Size = size
-		d.Position = position
-
-		d.BackgroundColor3 =
-			WHITE
-
-		d.BorderSizePixel = 0
-
-		d.ZIndex = 16
-		d.Parent = border
-
-		local c = Instance.new("UICorner")
-
-		c.CornerRadius =
-			UDim.new(1, 0)
-
-		c.Parent = d
-	end
-
-	-- top / bottom
-	for x = 8, 250, 25 do
-
-		Dash(
-			UDim2.fromOffset(14, 2),
-			UDim2.fromOffset(x, 0)
-		)
-
-		Dash(
-			UDim2.fromOffset(14, 2),
-			UDim2.new(
-				0,
-				x,
-				1,
-				-2
-			)
-		)
-	end
-
-	-- left / right
-	for yy = 8, height - 8, 20 do
-
-		Dash(
-			UDim2.fromOffset(2, 10),
-			UDim2.fromOffset(0, yy)
-		)
-
-		Dash(
-			UDim2.fromOffset(2, 10),
-			UDim2.new(
-				1,
-				-2,
-				0,
-				yy
-			)
-		)
-	end
-
-	return Button
+-- COMPONENT CREATOR FUNCTION
+local function CreateItemFrame(name, order)
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(1, 0, 0, 35)
+    Frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+    Frame.LayoutOrder = order
+    Frame.Parent = Content
+    
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, 8)
+    Corner.Parent = Frame
+    
+    local Stroke = Instance.new("UIStroke")
+    Stroke.Color = Color3.fromRGB(255, 255, 255)
+    Stroke.Thickness = 1.5
+    Stroke.Parent = Frame
+    
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(0.6, 0, 1, 0)
+    Label.Position = UDim2.new(0, 10, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = name
+    Label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Label.Font = Enum.Font.GothamBold
+    Label.TextSize = 13
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = Frame
+    
+    local LblStroke = Instance.new("UIStroke")
+    LblStroke.Color = Color3.fromRGB(0, 0, 0)
+    LblStroke.Thickness = 1
+    LblStroke.Parent = Label
+    
+    return Frame
 end
 
---==================================================
--- SWITCH
---==================================================
-
-local function CreateSwitch(parent)
-
-	local Switch = Instance.new("Frame")
-
-	Switch.Size =
-		UDim2.fromOffset(
-			50,
-			30
-		)
-
-	Switch.Position =
-		UDim2.new(
-			1,
-			-67,
-			0.5,
-			-15
-		)
-
-	Switch.BackgroundColor3 =
-		GRAY
-
-	Switch.BorderSizePixel = 0
-
-	Switch.ZIndex = 25
-	Switch.Parent = parent
-
-	local corner = Instance.new("UICorner")
-
-	corner.CornerRadius =
-		UDim.new(1, 0)
-
-	corner.Parent = Switch
-
-	local Circle = Instance.new("Frame")
-
-	Circle.Size =
-		UDim2.fromOffset(
-			22,
-			22
-		)
-
-	Circle.Position =
-		UDim2.fromOffset(
-			4,
-			4
-		)
-
-	Circle.BackgroundColor3 =
-		WHITE
-
-	Circle.BorderSizePixel = 0
-
-	Circle.ZIndex = 26
-	Circle.Parent = Switch
-
-	local circleCorner = Instance.new("UICorner")
-
-	circleCorner.CornerRadius =
-		UDim.new(1, 0)
-
-	circleCorner.Parent = Circle
-
-	return Switch, Circle
+local function CreateToggle(parentFrame, callback)
+    local ToggleBtn = Instance.new("TextButton")
+    ToggleBtn.Size = UDim2.new(0, 42, 0, 22)
+    ToggleBtn.Position = UDim2.new(1, -50, 0.5, -11)
+    ToggleBtn.BackgroundColor3 = Color3.fromRGB(150, 150, 150)
+    ToggleBtn.Text = ""
+    ToggleBtn.Parent = parentFrame
+    local TglCorner = Instance.new("UICorner")
+    TglCorner.CornerRadius = UDim.new(1, 0)
+    TglCorner.Parent = ToggleBtn
+    
+    local Circle = Instance.new("Frame")
+    Circle.Size = UDim2.new(0, 18, 0, 18)
+    Circle.Position = UDim2.new(0, 2, 0.5, -9)
+    Circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    Circle.Parent = ToggleBtn
+    local CirCorner = Instance.new("UICorner")
+    CirCorner.CornerRadius = UDim.new(1, 0)
+    CirCorner.Parent = Circle
+    
+    local isOn = false
+    ToggleBtn.MouseButton1Click:Connect(function()
+        isOn = not isOn
+        local goalPos = isOn and UDim2.new(1, -20, 0.5, -9) or UDim2.new(0, 2, 0.5, -9)
+        local goalColor = isOn and Color3.fromRGB(40, 200, 80) or Color3.fromRGB(150, 150, 150)
+        
+        TweenService:Create(Circle, TweenInfo.new(0.2), {Position = goalPos}):Play()
+        TweenService:Create(ToggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = goalColor}):Play()
+        
+        callback(isOn)
+    end)
 end
 
-local function SetSwitch(
-	switch,
-	circle,
-	state
-)
+-- 1. AutoFarm
+local FarmItem = CreateItemFrame("AutoFarm", 1)
+CreateToggle(FarmItem, function(state)
+    if state then StartFarm() else StopFarm() end
+end)
 
-	switch.BackgroundColor3 =
-		state and GREEN or GRAY
+-- 2. Monster Type Selector
+local TypeItem = CreateItemFrame("Monster Type :", 2)
+local TypeBtn = Instance.new("TextButton")
+TypeBtn.Size = UDim2.new(0, 80, 0, 22)
+TypeBtn.Position = UDim2.new(1, -88, 0.5, -11)
+TypeBtn.BackgroundTransparency = 1
+TypeBtn.Text = "Aggressors »"
+TypeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+TypeBtn.Font = Enum.Font.GothamBold
+TypeBtn.TextSize = 11
+TypeBtn.TextXAlignment = Enum.TextXAlignment.Right
+TypeBtn.Parent = TypeItem
+local TypeStroke = Instance.new("UIStroke")
+TypeStroke.Color = Color3.fromRGB(0, 0, 0)
+TypeStroke.Thickness = 1
+TypeStroke.Parent = TypeBtn
 
-	local target =
-		state
-		and UDim2.new(
-			1,
-			-26,
-			0,
-			4
-		)
-		or UDim2.fromOffset(
-			4,
-			4
-		)
+local modes = {"Aggressors", "Passives", "All"}
+local currentMode = 1
+TypeBtn.MouseButton1Click:Connect(function()
+    currentMode = currentMode + 1
+    if currentMode > 3 then currentMode = 1 end
+    TypeBtn.Text = modes[currentMode] .. " »"
+    
+    farmAggressors = (currentMode == 1 or currentMode == 3)
+    farmPassives = (currentMode == 2 or currentMode == 3)
+end)
 
-	TweenService:Create(
-		circle,
-		TweenInfo.new(
-			0.15,
-			Enum.EasingStyle.Quad,
-			Enum.EasingDirection.Out
-		),
-		{
-			Position = target
-		}
-	):Play()
+-- 3. KillAura
+local AuraItem = CreateItemFrame("KillAura", 3)
+CreateToggle(AuraItem, function(state)
+    if state then StartAura() else StopAura() end
+end)
+
+-- FOOTER (SOSIAL MEDIA)
+local Footer = Instance.new("Frame")
+Footer.Size = UDim2.new(1, -24, 0, 30)
+Footer.Position = UDim2.new(0, 12, 1, -40)
+Footer.BackgroundTransparency = 1
+Footer.Parent = Main
+
+local DiscordBtn = Instance.new("TextButton")
+DiscordBtn.Size = UDim2.new(0.48, 0, 1, 0)
+DiscordBtn.Position = UDim2.new(0, 0, 0, 0)
+DiscordBtn.BackgroundColor3 = Color3.fromRGB(150, 80, 255)
+DiscordBtn.Text = "discord"
+DiscordBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+DiscordBtn.Font = Enum.Font.GothamBold
+DiscordBtn.TextSize = 12
+DiscordBtn.Parent = Footer
+local DisCorner = Instance.new("UICorner")
+DisCorner.CornerRadius = UDim.new(1, 0)
+DisCorner.Parent = DiscordBtn
+local DisStroke = Instance.new("UIStroke")
+DisStroke.Color = Color3.fromRGB(255, 255, 255)
+DisStroke.Thickness = 1.5
+DisStroke.Parent = DiscordBtn
+
+local YoutubeBtn = Instance.new("TextButton")
+YoutubeBtn.Size = UDim2.new(0.48, 0, 1, 0)
+YoutubeBtn.Position = UDim2.new(0.52, 0, 0, 0)
+YoutubeBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
+YoutubeBtn.Text = "youtube"
+YoutubeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+YoutubeBtn.Font = Enum.Font.GothamBold
+YoutubeBtn.TextSize = 12
+YoutubeBtn.Parent = Footer
+local YtCorner = Instance.new("UICorner")
+YtCorner.CornerRadius = UDim.new(1, 0)
+YtCorner.Parent = YoutubeBtn
+local YtStroke = Instance.new("UIStroke")
+YtStroke.Color = Color3.fromRGB(255, 255, 255)
+YtStroke.Thickness = 1.5
+YtStroke.Parent = YoutubeBtn
+
+--==================================================
+-- DRAG & MINIMIZE LOGIC
+--==================================================
+
+MinimizeBtn.MouseButton1Click:Connect(function()
+    Main.Visible = false
+    MinFrame.Visible = true
+end)
+
+MinFrame.MouseButton1Click:Connect(function()
+    MinFrame.Visible = false
+    Main.Visible = true
+end)
+
+CloseBtn.MouseButton1Click:Connect(function()
+    farming = false
+    auraAttacking = false
+    ScreenGui:Destroy()
+end)
+
+local function MakeDraggable(frame)
+    local dragging, dragStart, startPos
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
 end
 
---==================================================
--- AUTO FARM BUTTON
---==================================================
-
-local FarmButton =
-	CreateFeatureButton(
-		"AutoFarm",
-		0,
-		55
-	)
-
-local FarmText = Instance.new("TextLabel")
-
-FarmText.Size =
-	UDim2.new(
-		1,
-		-80,
-		1,
-		0
-	)
-
-FarmText.Position =
-	UDim2.fromOffset(
-		18,
-		0
-	)
-
-FarmText.BackgroundTransparency = 1
-
-FarmText.Text =
-	"AutoFarm"
-
-FarmText.TextColor3 =
-	WHITE
-
-FarmText.TextSize = 16
-FarmText.Font =
-	Enum.Font.GothamBold
-
-FarmText.TextXAlignment =
-	Enum.TextXAlignment.Left
-
-FarmText.ZIndex = 22
-FarmText.Parent = FarmButton
-
-local FarmSwitch, FarmCircle =
-	CreateSwitch(FarmButton)
-
---==================================================
--- MONSTER TYPE
---==================================================
-
-local MonsterButton =
-	CreateFeatureButton(
-		"MonsterType",
-		65,
-		55
-	)
-
-local MonsterText = Instance.new("TextLabel")
-
-MonsterText.Size =
-	UDim2.new(
-		0.52,
-		0,
-		1,
-		0
-	)
-
-MonsterText.Position =
-	UDim2.fromOffset(
-		18,
-		0
-	)
-
-MonsterText.BackgroundTransparency = 1
-
-MonsterText.Text =
-	"Monster Type :"
-
-MonsterText.TextColor3 =
-	WHITE
-
-MonsterText.TextSize = 15
-MonsterText.Font =
-	Enum.Font.GothamBold
-
-MonsterText.TextXAlignment =
-	Enum.TextXAlignment.Left
-
-MonsterText.ZIndex = 22
-MonsterText.Parent = MonsterButton
-
-local MonsterValue = Instance.new("TextLabel")
-
-MonsterValue.Size =
-	UDim2.fromOffset(
-		95,
-		40
-	)
-
-MonsterValue.Position =
-	UDim2.new(
-		1,
-		-112,
-		0.5,
-		-20
-	)
-
-MonsterValue.BackgroundTransparency = 1
-
-MonsterValue.Text =
-	"Aggressors"
-
-MonsterValue.TextColor3 =
-	WHITE
-
-MonsterValue.TextSize = 13
-MonsterValue.Font =
-	Enum.Font.GothamBold
-
-MonsterValue.TextXAlignment =
-	Enum.TextXAlignment.Center
-
-MonsterValue.ZIndex = 22
-MonsterValue.Parent = MonsterButton
-
-local Arrow = Instance.new("TextLabel")
-
-Arrow.Size =
-	UDim2.fromOffset(
-		20,
-		30
-	)
-
-Arrow.Position =
-	UDim2.new(
-		1,
-		-28,
-		0.5,
-		-15
-	)
-
-Arrow.BackgroundTransparency = 1
-
-Arrow.Text = "»"
-
-Arrow.TextColor3 =
-	WHITE
-
-Arrow.TextSize = 19
-Arrow.Font =
-	Enum.Font.GothamBold
-
-Arrow.ZIndex = 22
-Arrow.Parent = MonsterButton
-
---==================================================
--- KILLAURA BUTTON
---==================================================
-
-local AuraButton =
-	CreateFeatureButton(
-		"KillAura",
-		130,
-		55
-	)
-
-local AuraText = Instance.new("TextLabel")
-
-AuraText.Size =
-	UDim2.new(
-		1,
-		-80,
-		1,
-		0
-	)
-
-AuraText.Position =
-	UDim2.fromOffset(
-		18,
-		0
-	)
-
-AuraText.BackgroundTransparency = 1
-
-AuraText.Text =
-	"KillAura"
-
-AuraText.TextColor3 =
-	WHITE
-
-AuraText.TextSize = 16
-AuraText.Font =
-	Enum.Font.GothamBold
-
-AuraText.TextXAlignment =
-	Enum.TextXAlignment.Left
-
-AuraText.ZIndex = 22
-AuraText.Parent = AuraButton
-
-local AuraSwitch, AuraCircle =
-	CreateSwitch(AuraButton)
-
---==================================================
--- STATUS
---==================================================
-
-local Status = Instance.new("TextLabel")
-
-Status.Size =
-	UDim2.new(
-		1,
-		0,
-		0,
-		25
-	)
-
-Status.Position =
-	UDim2.fromOffset(
-		0,
-		200
-	)
-
-Status.BackgroundTransparency = 1
-
-Status.Text =
-	"Ready"
-
-Status.TextColor3 =
-	Color3.fromRGB(
-		180,
-		200,
-		220
-	)
-
-Status.TextSize = 11
-Status.Font =
-	Enum.Font.GothamMedium
-
-Status.TextXAlignment =
-	Enum.TextXAlignment.Center
-
-Status.ZIndex = 20
-Status.Parent = Content
-
---==================================================
--- MONSTER TYPE LOGIC
---==================================================
-
-local MonsterTypes = {
-	"Aggressors",
-	"Passives",
-	"Both"
-}
-
-local MonsterIndex = 1
-
-local function ApplyMonsterType()
-
-	if MonsterIndex == 1 then
-
-		farmAggressors = true
-		farmPassives = false
-
-	elseif MonsterIndex == 2 then
-
-		farmAggressors = false
-		farmPassives = true
-
-	else
-
-		farmAggressors = true
-		farmPassives = true
-	end
-
-	MonsterValue.Text =
-		MonsterTypes[MonsterIndex]
-end
-
-ApplyMonsterType()
-
-MonsterButton.MouseButton1Click:Connect(function()
-
-	MonsterIndex += 1
-
-	if MonsterIndex > #MonsterTypes then
-		MonsterIndex = 1
-	end
-
-	ApplyMonsterType()
-
-	-- kalau farm sedang berjalan,
-	-- target berikutnya otomatis mengikuti type baru
-end)
-
---==================================================
--- AUTO FARM BUTTON LOGIC
---==================================================
-
-FarmButton.MouseButton1Click:Connect(function()
-
-	farming = not farming
-
-	SetSwitch(
-		FarmSwitch,
-		FarmCircle,
-		farming
-	)
-
-	if farming then
-
-		Status.Text =
-			"AutoFarm : ON"
-
-		Status.TextColor3 =
-			GREEN
-
-		StartFarm()
-
-	else
-
-		Status.Text =
-			"AutoFarm : OFF"
-
-		Status.TextColor3 =
-			Color3.fromRGB(
-				180,
-				200,
-				220
-			)
-
-		StopFarm()
-	end
-end)
-
---==================================================
--- KILLAURA BUTTON LOGIC
---==================================================
-
-AuraButton.MouseButton1Click:Connect(function()
-
-	killAura = not killAura
-
-	SetSwitch(
-		AuraSwitch,
-		AuraCircle,
-		killAura
-	)
-
-	if killAura then
-
-		Status.Text =
-			"KillAura : ON"
-
-		Status.TextColor3 =
-			GREEN
-
-		StartKillAura()
-
-	else
-
-		Status.Text =
-			"KillAura : OFF"
-
-		Status.TextColor3 =
-			Color3.fromRGB(
-				180,
-				200,
-				220
-			)
-
-		StopKillAura()
-	end
-end)
-
---==================================================
--- MINIMIZE
---==================================================
-
-local minimized = false
-
-Minimize.MouseButton1Click:Connect(function()
-
-	minimized = not minimized
-
-	if minimized then
-
-		Content.Visible = false
-
-		BorderLayer.Visible = false
-
-		Main.Size =
-			UDim2.fromOffset(
-				MAIN_WIDTH,
-				55
-			)
-
-		Minimize.Text = "+"
-
-	else
-
-		Main.Size =
-			UDim2.fromOffset(
-				MAIN_WIDTH,
-				MAIN_HEIGHT
-			)
-
-		BorderLayer.Visible = true
-
-		Content.Visible = true
-
-		Minimize.Text = "−"
-	end
-end)
-
---==================================================
--- CLOSE
---==================================================
-
-Close.MouseButton1Click:Connect(function()
-
-	StopFarm()
-	StopKillAura()
-
-	ScreenGui:Destroy()
-end)
-
---==================================================
--- DRAG
---==================================================
-
-local dragging = false
-local dragStart
-local startPosition
-
-Header.InputBegan:Connect(function(input)
-
-	if input.UserInputType ==
-		Enum.UserInputType.MouseButton1
-
-		or input.UserInputType ==
-		Enum.UserInputType.Touch then
-
-		dragging = true
-
-		dragStart = input.Position
-		startPosition = Main.Position
-
-		input.Changed:Connect(function()
-
-			if input.UserInputState ==
-				Enum.UserInputState.End then
-
-				dragging = false
-			end
-		end)
-	end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-
-	if not dragging then
-		return
-	end
-
-	if input.UserInputType ==
-		Enum.UserInputType.MouseMovement
-
-		or input.UserInputType ==
-		Enum.UserInputType.Touch then
-
-		local delta =
-			input.Position - dragStart
-
-		Main.Position =
-			UDim2.new(
-				startPosition.X.Scale,
-				startPosition.X.Offset + delta.X,
-
-				startPosition.Y.Scale,
-				startPosition.Y.Offset + delta.Y
-			)
-	end
-end)
+MakeDraggable(Main)
+MakeDraggable(MinFrame)
