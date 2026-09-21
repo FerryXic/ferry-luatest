@@ -246,17 +246,25 @@ TitleStroke.Color = Color3.fromRGB(0, 0, 0)
 TitleStroke.Thickness = 1.5
 TitleStroke.Parent = Title
 
--- DESAIN TOMBOL WINDOW KAPSUL (Sesuai Konsep Baru)
+-- DESAIN TOMBOL WINDOW KAPSUL (Diperbaiki)
 local WindowControls = Instance.new("Frame")
-WindowControls.Size = UDim2.new(0, 60, 0, 22)
-WindowControls.Position = UDim2.new(1, -70, 0.5, -11)
+WindowControls.Size = UDim2.new(0, 60, 0, 24) -- Sedikit lebih tinggi agar lebih proporsional
+WindowControls.Position = UDim2.new(1, -72, 0.5, -12)
 WindowControls.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-WindowControls.ClipsDescendants = true -- Memotong tombol di dalamnya agar rapi
+WindowControls.BorderSizePixel = 0
+WindowControls.ClipsDescendants = true -- Memotong tombol di dalamnya
 WindowControls.Parent = Header
 
 local ControlCorner = Instance.new("UICorner")
-ControlCorner.CornerRadius = UDim.new(0, 6)
+ControlCorner.CornerRadius = UDim.new(0, 8) -- Radius dinaikkan agar melengkung seperti kapsul
 ControlCorner.Parent = WindowControls
+
+-- Garis luar putih untuk kapsul
+local ControlStroke = Instance.new("UIStroke")
+ControlStroke.Color = Color3.fromRGB(255, 255, 255)
+ControlStroke.Thickness = 1.5
+ControlStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+ControlStroke.Parent = WindowControls
 
 local MinimizeBtn = Instance.new("TextButton")
 MinimizeBtn.Size = UDim2.new(0.5, 0, 1, 0)
