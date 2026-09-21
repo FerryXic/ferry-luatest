@@ -180,7 +180,7 @@ end
 local function StopFarm() farming = false end
 
 --==================================================
--- GUI BUILDER (FINAL DESIGN)
+-- GUI BUILDER (FINAL DESIGN + FIX CAPSULE BUG)
 --==================================================
 
 local ScreenGui = Instance.new("ScreenGui")
@@ -246,49 +246,73 @@ TitleStroke.Color = Color3.fromRGB(0, 0, 0)
 TitleStroke.Thickness = 1.5
 TitleStroke.Parent = Title
 
--- DESAIN TOMBOL WINDOW KAPSUL (Diperbaiki)
+-- ==========================================
+-- DESAIN TOMBOL WINDOW KAPSUL (TRIK PATCHING)
+-- ==========================================
+
+-- 1. Base Kapsul (Hijau Penuh)
 local WindowControls = Instance.new("Frame")
-WindowControls.Size = UDim2.new(0, 60, 0, 24) -- Sedikit lebih tinggi agar lebih proporsional
+WindowControls.Size = UDim2.new(0, 60, 0, 24)
 WindowControls.Position = UDim2.new(1, -72, 0.5, -12)
-WindowControls.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+WindowControls.BackgroundColor3 = Color3.fromRGB(30, 200, 80) -- Hijau
 WindowControls.BorderSizePixel = 0
-WindowControls.ClipsDescendants = true -- Memotong tombol di dalamnya
 WindowControls.Parent = Header
 
 local ControlCorner = Instance.new("UICorner")
-ControlCorner.CornerRadius = UDim.new(0, 8) -- Radius dinaikkan agar melengkung seperti kapsul
+ControlCorner.CornerRadius = UDim.new(0, 8) -- Radius melengkung mulus
 ControlCorner.Parent = WindowControls
 
--- Garis luar putih untuk kapsul
 local ControlStroke = Instance.new("UIStroke")
 ControlStroke.Color = Color3.fromRGB(255, 255, 255)
 ControlStroke.Thickness = 1.5
 ControlStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 ControlStroke.Parent = WindowControls
 
+-- 2. Bagian Merah (Di sisi Kanan Kapsul)
+local RedHalf = Instance.new("Frame")
+RedHalf.Size = UDim2.new(0.5, 0, 1, 0)
+RedHalf.Position = UDim2.new(0.5, 0, 0, 0)
+RedHalf.BackgroundColor3 = Color3.fromRGB(220, 50, 50) -- Merah
+RedHalf.BorderSizePixel = 0
+RedHalf.Parent = WindowControls
+
+local RedCorner = Instance.new("UICorner")
+RedCorner.CornerRadius = UDim.new(0, 8) -- Bikin melengkung juga
+RedCorner.Parent = RedHalf
+
+-- 3. Penambal Tengah (Patch) agar tidak ada celah/lengkungan aneh di tengah
+local RedPatch = Instance.new("Frame")
+RedPatch.Size = UDim2.new(0.2, 0, 1, 0)
+RedPatch.Position = UDim2.new(0, 0, 0, 0)
+RedPatch.BackgroundColor3 = Color3.fromRGB(220, 50, 50) -- Merah
+RedPatch.BorderSizePixel = 0
+RedPatch.Parent = RedHalf
+
+-- 4. Tombol Transparan untuk mendeteksi Klik
 local MinimizeBtn = Instance.new("TextButton")
 MinimizeBtn.Size = UDim2.new(0.5, 0, 1, 0)
 MinimizeBtn.Position = UDim2.new(0, 0, 0, 0)
-MinimizeBtn.BackgroundColor3 = Color3.fromRGB(30, 200, 80) -- Hijau
+MinimizeBtn.BackgroundTransparency = 1 -- Bening (Tembus pandang ke warna dasar)
 MinimizeBtn.Text = "-"
 MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 MinimizeBtn.Font = Enum.Font.GothamBold
 MinimizeBtn.TextSize = 18
-MinimizeBtn.BorderSizePixel = 0
 MinimizeBtn.Parent = WindowControls
 
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.new(0.5, 0, 1, 0)
 CloseBtn.Position = UDim2.new(0.5, 0, 0, 0)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50) -- Merah
+CloseBtn.BackgroundTransparency = 1 -- Bening
 CloseBtn.Text = "X"
 CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 CloseBtn.Font = Enum.Font.GothamBold
 CloseBtn.TextSize = 13
-CloseBtn.BorderSizePixel = 0
 CloseBtn.Parent = WindowControls
 
+-- ==========================================
 -- CONTENT AREA
+-- ==========================================
+
 local Content = Instance.new("Frame")
 Content.Size = UDim2.new(1, -24, 1, -85)
 Content.Position = UDim2.new(0, 12, 0, 35)
@@ -409,7 +433,7 @@ CreateToggle(AuraItem, function(state)
     if state then StartAura() else StopAura() end
 end)
 
--- FOOTER (SOSIAL MEDIA) - Text Normal & Tanpa Outline
+-- FOOTER (SOSIAL MEDIA)
 local Footer = Instance.new("Frame")
 Footer.Size = UDim2.new(1, -24, 0, 30)
 Footer.Position = UDim2.new(0, 12, 1, -40)
@@ -422,7 +446,7 @@ DiscordBtn.Position = UDim2.new(0, 0, 0, 0)
 DiscordBtn.BackgroundColor3 = Color3.fromRGB(150, 80, 255)
 DiscordBtn.Text = "discord"
 DiscordBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-DiscordBtn.Font = Enum.Font.Gotham -- Normal Font
+DiscordBtn.Font = Enum.Font.Gotham
 DiscordBtn.TextSize = 13
 DiscordBtn.Parent = Footer
 local DisCorner = Instance.new("UICorner")
@@ -435,7 +459,7 @@ YoutubeBtn.Position = UDim2.new(0.52, 0, 0, 0)
 YoutubeBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
 YoutubeBtn.Text = "youtube"
 YoutubeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-YoutubeBtn.Font = Enum.Font.Gotham -- Normal Font
+YoutubeBtn.Font = Enum.Font.Gotham
 YoutubeBtn.TextSize = 13
 YoutubeBtn.Parent = Footer
 local YtCorner = Instance.new("UICorner")
