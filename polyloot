@@ -180,7 +180,7 @@ end
 local function StopFarm() farming = false end
 
 --==================================================
--- GUI BUILDER (SESUAI KONSEP)
+-- GUI BUILDER (FINAL DESIGN)
 --==================================================
 
 local ScreenGui = Instance.new("ScreenGui")
@@ -192,7 +192,7 @@ ScreenGui.Parent = Player:WaitForChild("PlayerGui")
 local Main = Instance.new("Frame")
 Main.Size = UDim2.new(0, 260, 0, 310)
 Main.Position = UDim2.new(0.5, -130, 0.5, -155)
-Main.BackgroundColor3 = Color3.fromRGB(4, 25, 55) -- Biru gelap konsep
+Main.BackgroundColor3 = Color3.fromRGB(4, 25, 55)
 Main.Parent = ScreenGui
 local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 12)
@@ -232,7 +232,7 @@ Header.BackgroundTransparency = 1
 Header.Parent = Main
 
 local Title = Instance.new("TextLabel")
-Title.Size = UDim2.new(1, -70, 1, 0)
+Title.Size = UDim2.new(1, -80, 1, 0)
 Title.Position = UDim2.new(0, 12, 0, 0)
 Title.BackgroundTransparency = 1
 Title.Text = "VayScript - Poly Loot"
@@ -246,31 +246,39 @@ TitleStroke.Color = Color3.fromRGB(0, 0, 0)
 TitleStroke.Thickness = 1.5
 TitleStroke.Parent = Title
 
+-- DESAIN TOMBOL WINDOW KAPSUL (Sesuai Konsep Baru)
+local WindowControls = Instance.new("Frame")
+WindowControls.Size = UDim2.new(0, 60, 0, 22)
+WindowControls.Position = UDim2.new(1, -70, 0.5, -11)
+WindowControls.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+WindowControls.ClipsDescendants = true -- Memotong tombol di dalamnya agar rapi
+WindowControls.Parent = Header
+
+local ControlCorner = Instance.new("UICorner")
+ControlCorner.CornerRadius = UDim.new(0, 6)
+ControlCorner.Parent = WindowControls
+
 local MinimizeBtn = Instance.new("TextButton")
-MinimizeBtn.Size = UDim2.new(0, 20, 0, 20)
-MinimizeBtn.Position = UDim2.new(1, -52, 0.5, -10)
-MinimizeBtn.BackgroundColor3 = Color3.fromRGB(30, 180, 70)
+MinimizeBtn.Size = UDim2.new(0.5, 0, 1, 0)
+MinimizeBtn.Position = UDim2.new(0, 0, 0, 0)
+MinimizeBtn.BackgroundColor3 = Color3.fromRGB(30, 200, 80) -- Hijau
 MinimizeBtn.Text = "-"
 MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 MinimizeBtn.Font = Enum.Font.GothamBold
 MinimizeBtn.TextSize = 18
-MinimizeBtn.Parent = Header
-local MinBtnCorner = Instance.new("UICorner")
-MinBtnCorner.CornerRadius = UDim.new(1, 0)
-MinBtnCorner.Parent = MinimizeBtn
+MinimizeBtn.BorderSizePixel = 0
+MinimizeBtn.Parent = WindowControls
 
 local CloseBtn = Instance.new("TextButton")
-CloseBtn.Size = UDim2.new(0, 20, 0, 20)
-CloseBtn.Position = UDim2.new(1, -26, 0.5, -10)
-CloseBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
-CloseBtn.Text = "x"
+CloseBtn.Size = UDim2.new(0.5, 0, 1, 0)
+CloseBtn.Position = UDim2.new(0.5, 0, 0, 0)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50) -- Merah
+CloseBtn.Text = "X"
 CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
 CloseBtn.Font = Enum.Font.GothamBold
-CloseBtn.TextSize = 14
-CloseBtn.Parent = Header
-local CloseCorner = Instance.new("UICorner")
-CloseCorner.CornerRadius = UDim.new(1, 0)
-CloseCorner.Parent = CloseBtn
+CloseBtn.TextSize = 13
+CloseBtn.BorderSizePixel = 0
+CloseBtn.Parent = WindowControls
 
 -- CONTENT AREA
 local Content = Instance.new("Frame")
@@ -393,7 +401,7 @@ CreateToggle(AuraItem, function(state)
     if state then StartAura() else StopAura() end
 end)
 
--- FOOTER (SOSIAL MEDIA)
+-- FOOTER (SOSIAL MEDIA) - Text Normal & Tanpa Outline
 local Footer = Instance.new("Frame")
 Footer.Size = UDim2.new(1, -24, 0, 30)
 Footer.Position = UDim2.new(0, 12, 1, -40)
@@ -406,16 +414,12 @@ DiscordBtn.Position = UDim2.new(0, 0, 0, 0)
 DiscordBtn.BackgroundColor3 = Color3.fromRGB(150, 80, 255)
 DiscordBtn.Text = "discord"
 DiscordBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-DiscordBtn.Font = Enum.Font.GothamBold
-DiscordBtn.TextSize = 12
+DiscordBtn.Font = Enum.Font.Gotham -- Normal Font
+DiscordBtn.TextSize = 13
 DiscordBtn.Parent = Footer
 local DisCorner = Instance.new("UICorner")
 DisCorner.CornerRadius = UDim.new(1, 0)
 DisCorner.Parent = DiscordBtn
-local DisStroke = Instance.new("UIStroke")
-DisStroke.Color = Color3.fromRGB(255, 255, 255)
-DisStroke.Thickness = 1.5
-DisStroke.Parent = DiscordBtn
 
 local YoutubeBtn = Instance.new("TextButton")
 YoutubeBtn.Size = UDim2.new(0.48, 0, 1, 0)
@@ -423,16 +427,12 @@ YoutubeBtn.Position = UDim2.new(0.52, 0, 0, 0)
 YoutubeBtn.BackgroundColor3 = Color3.fromRGB(220, 50, 50)
 YoutubeBtn.Text = "youtube"
 YoutubeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-YoutubeBtn.Font = Enum.Font.GothamBold
-YoutubeBtn.TextSize = 12
+YoutubeBtn.Font = Enum.Font.Gotham -- Normal Font
+YoutubeBtn.TextSize = 13
 YoutubeBtn.Parent = Footer
 local YtCorner = Instance.new("UICorner")
 YtCorner.CornerRadius = UDim.new(1, 0)
 YtCorner.Parent = YoutubeBtn
-local YtStroke = Instance.new("UIStroke")
-YtStroke.Color = Color3.fromRGB(255, 255, 255)
-YtStroke.Thickness = 1.5
-YtStroke.Parent = YoutubeBtn
 
 --==================================================
 -- DRAG & MINIMIZE LOGIC
